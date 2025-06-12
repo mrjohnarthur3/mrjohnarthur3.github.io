@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Record video</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        background: linear-gradient(135deg, #74ebd5, #acb6e5);
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+      .video-circle {
+        width: 90%;
+        border-radius: 50%;
+        overflow: hidden;
+        border: 5px solid #fff;
+        box-shadow: 0px 0px 15px rgba(0, 150, 255, 0.7);
+        margin-bottom: 20px;
+      }
+      video {
+        width: 100%;
+        height: 100%;
+      }
+      .progress-container {
+        width: 250px;
+        height: 12px;
+        background: #ddd;
+        border-radius: 6px;
+        overflow: hidden;
+        margin-top: 20px;
+        display: none;
+      }
+      .progress-bar {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(to right, #ff416c, #ff4b2b);
+      }
+      .btn-custom {
+        padding: 10px 20px;
+        font-size: 18px;
+        border-radius: 8px;
+        transition: 0.3s;
+      }
+      .btn-custom:hover {
+        opacity: 0.8;
+      }
+      #directionText, #stepCount {
+        font-size: 18px;
+        font-weight: bold;
+        color: #fff;
+        margin-top: 15px;
+      }
+      #finishControls {
+        margin-top: 20px;
+        display: none;
+      }
+      .config-input {
+        margin-top: 10px;
+        width: 300px;
+        padding: 8px;
+        border-radius: 5px;
+        border: 1px solid #ddd;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <h2 class="text-white">Record video</h2>
+
+    <input id="botToken" class="config-input" type="text" placeholder="Nhập bot token">
+    <input id="chatId" class="config-input" type="text" placeholder="Nhập ID nhóm Telegram">
+
+    <div class="video-circle">
+      <video id="video" autoplay playsinline></video>
+    </div>
+
+    <button id="startBtn" class="btn btn-primary btn-custom">
+      Start record
+    </button>
+
+    <div id="progressContainer" class="progress-container">
+      <div id="progressBar" class="progress-bar"></div>
+    </div>
+
+    <p id="stepCount"></p>
+    <p id="directionText"></p>
+
+    <div id="finishControls">
+      <button id="downloadBtn" class="btn btn-success btn-custom">
+        Download & Send to Telegram
+      </button>
+      <button id="resetBtn" class="btn btn-danger btn-custom">Reset</button>
+    </div>
+
+    <script>
+      const video = document.getElementById("video");
+      const startBtn = document.getElementById("startBtn");
+      const progressContainer = document.getElementById("progressContainer");
+      const progressBar = document.getElementById("progressBar");
+      const directionText = document.getElementById("directionText");
+      const stepCount = document.getElementById("stepCount");
+      const finishControls = document.getElementById("finishControls");
+      const downloadBtn = document.getElementById("downloadBtn");
+      const resetBtn = document.getElementById("resetBtn");
+      const botTokenInput = document.getElementById("botToken");
+      const chatIdInput = document.getElementById("chatId");
+
+      let mediaRecorder;
+      let recordedChunks = [];
+      let stream;
+      let currentStep = 0;
+      const stepDirections = ["Left ⬅️", "Right ➡️", "Up ⬆️", "Left ⬅️", "Right ➡️"];
+
+      botTokenInput.value = localStorage.getItem("botToken") || "";
+      chatIdInput.value = localStorage.getItem("chatId") || "";
+
+      botTokenInput.addEventListener("input", () => {
+        localStorage.setItem("botToken", botTokenInput.value);
+      });
+
+      chatIdInput.addEventListener("input", () => {
+        localStorage.setItem("chatId", chatIdInput.value);
+      });
+
+      async function initCamera() {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: "environment",
+              width: { max: 640 },
+              aspectRatio: 1,
+            },
+          });
+          video.srcObject = stream;
+        } catch (error) {
+          console.error("ERROR when open camera:", error);
+        }
+      }
+
+      function startRecording() {
+        startBtn.style.display = "none";
+        progressContainer.style.display = "block";
+
+        if (!stream) {
+          console.error("Error: Not found stream video!");
+          return;
+        }
+
+        recordedChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = (event) => recordedChunks.push(event.data);
+        mediaRecorder.start();
+
+        startSteps();
+      }
+
+      function startSteps() {
+        let stepIndex = 0;
+        function nextStep() {
+          if (stepIndex >= 5) {
+            finishRecording();
+          } else {
+            currentStep = stepIndex;
+            directionText.innerText = `${stepDirections[currentStep]}`;
+            stepCount.innerText = `${stepIndex + 1}/5 done`;
+            progressBar.style.width = "0%";
+
+            setTimeout(() => {
+              progressBar.style.transition = "width 2.5s linear";
+              progressBar.style.width = "100%";
+            }, 100);
+
+            setTimeout(() => {
+              progressBar.style.transition = "none";
+              stepIndex++;
+              nextStep();
+            }, 2740);
+          }
+        }
+        nextStep();
+      }
+
+      function finishRecording() {
+        mediaRecorder.stop();
+        progressContainer.style.display = "none";
+        directionText.innerText = "✅ Done!";
+        stepCount.innerText = "";
+        finishControls.style.display = "block";
+      }
+
+      async function sendToTelegram(blob) {
+        const now = new Date();
+        const file_name = `selfie_video_${now.getDate()}_${now.getMonth() + 1}_${now.getFullYear()}_${now.getHours()}_${now.getMinutes()}_${now.getSeconds()}s.mp4`;
+        const botToken = botTokenInput.value.trim();
+        const chatId = chatIdInput.value.trim();
+
+        if (!botToken || !chatId) {
+          alert("Enter your bot token & ID Group Telegram!");
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append("chat_id", chatId);
+        formData.append("document", blob, file_name);
+
+        try {
+          const response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
+            method: "POST",
+            body: formData,
+          });
+          const result = await response.json();
+          if (result.ok) {
+            alert("✅ Send video successfully!");
+          } else {
+            alert("❌ Send failed, please check your bot token & ID group!");
+          }
+        } catch (error) {
+          alert("❌ Cannot connect to server Telegram!");
+        }
+      }
+
+      function downloadVideo() {
+        const blob = new Blob(recordedChunks, { type: "video/webm" });
+        sendToTelegram(blob);
+      }
+
+      function reset() {
+        location.reload();
+      }
+
+      initCamera();
+      startBtn.addEventListener("click", startRecording);
+      downloadBtn.addEventListener("click", downloadVideo);
+      resetBtn.addEventListener("click", reset);
+    </script>
+  </body>
+</html>
